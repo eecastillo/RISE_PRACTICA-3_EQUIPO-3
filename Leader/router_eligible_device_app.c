@@ -43,6 +43,13 @@ Include Files
 #include "app_temp_sensor.h"
 #include "coap.h"
 #include "app_socket_utils.h"
+
+#include "board.h"
+#include "fsl_port.h"
+#include "fsl_fxos.h"
+#include "pin_mux.h"
+#include "clock_config.h"
+
 #if THR_ENABLE_EVENT_MONITORING
 #include "app_event_monitoring.h"
 #endif
@@ -85,6 +92,18 @@ Private macros
 #endif
 
 #define APP_DEFAULT_DEST_ADDR                   in6addr_realmlocal_allthreadnodes
+
+/* I2C source clock */
+#define ACCEL_I2C_CLK_SRC I2C1_CLK_SRC
+#define I2C_BAUDRATE 100000U
+
+#define I2C_RELEASE_SDA_PORT PORTC
+#define I2C_RELEASE_SCL_PORT PORTC
+#define I2C_RELEASE_SDA_GPIO GPIOC
+#define I2C_RELEASE_SDA_PIN 3U
+#define I2C_RELEASE_SCL_GPIO GPIOC
+#define I2C_RELEASE_SCL_PIN 2U
+#define I2C_RELEASE_BUS_COUNT 100U
 
 /*==================================================================================================
 Private type definitions
@@ -174,6 +193,124 @@ taskMsgQueue_t *mpAppThreadMsgQueue = NULL;
 
 extern bool_t gEnable802154TxLed;
 
+i2c_master_handle_t g_MasterHandle;
+/* FXOS device address */
+const uint8_t g_accel_address[] = {0x1CU, 0x1DU, 0x1EU, 0x1FU};
+
+static void i2c_release_bus_delay(void)
+{
+    uint32_t i = 0;
+    for (i = 0; i < I2C_RELEASE_BUS_COUNT; i++)
+    {
+        __NOP();
+    }
+}
+
+void BOARD_I2C_ReleaseBus(void)
+{
+    uint8_t i = 0;
+    gpio_pin_config_t pin_config;
+    port_pin_config_t i2c_pin_config = {0};
+
+    /* Config pin mux as gpio */
+    i2c_pin_config.pullSelect = kPORT_PullUp;
+    i2c_pin_config.mux = kPORT_MuxAsGpio;
+
+    pin_config.pinDirection = kGPIO_DigitalOutput;
+    pin_config.outputLogic = 1U;
+    CLOCK_EnableClock(kCLOCK_PortC);
+    PORT_SetPinConfig(I2C_RELEASE_SCL_PORT, I2C_RELEASE_SCL_PIN, &i2c_pin_config);
+    PORT_SetPinConfig(I2C_RELEASE_SDA_PORT, I2C_RELEASE_SDA_PIN, &i2c_pin_config);
+
+    GPIO_PinInit(I2C_RELEASE_SCL_GPIO, I2C_RELEASE_SCL_PIN, &pin_config);
+    GPIO_PinInit(I2C_RELEASE_SDA_GPIO, I2C_RELEASE_SDA_PIN, &pin_config);
+
+    /* Drive SDA low first to simulate a start */
+    GPIO_WritePinOutput(I2C_RELEASE_SDA_GPIO, I2C_RELEASE_SDA_PIN, 0U);
+    i2c_release_bus_delay();
+
+    /* Send 9 pulses on SCL and keep SDA high */
+    for (i = 0; i < 9; i++)
+    {
+        GPIO_WritePinOutput(I2C_RELEASE_SCL_GPIO, I2C_RELEASE_SCL_PIN, 0U);
+        i2c_release_bus_delay();
+
+        GPIO_WritePinOutput(I2C_RELEASE_SDA_GPIO, I2C_RELEASE_SDA_PIN, 1U);
+        i2c_release_bus_delay();
+
+        GPIO_WritePinOutput(I2C_RELEASE_SCL_GPIO, I2C_RELEASE_SCL_PIN, 1U);
+        i2c_release_bus_delay();
+        i2c_release_bus_delay();
+    }
+
+    /* Send stop */
+    GPIO_WritePinOutput(I2C_RELEASE_SCL_GPIO, I2C_RELEASE_SCL_PIN, 0U);
+    i2c_release_bus_delay();
+
+    GPIO_WritePinOutput(I2C_RELEASE_SDA_GPIO, I2C_RELEASE_SDA_PIN, 0U);
+    i2c_release_bus_delay();
+
+    GPIO_WritePinOutput(I2C_RELEASE_SCL_GPIO, I2C_RELEASE_SCL_PIN, 1U);
+    i2c_release_bus_delay();
+
+    GPIO_WritePinOutput(I2C_RELEASE_SDA_GPIO, I2C_RELEASE_SDA_PIN, 1U);
+    i2c_release_bus_delay();
+}
+
+fxos_handle_t fxosHandle;
+fxos_data_t sensorData;
+int16_t xData, yData, zData;
+
+
+void initialize_accel(void)
+{
+	uint8_t i = 0;
+	uint32_t i2cSourceClock;
+	i2c_master_config_t i2cConfig;
+	uint8_t regResult = 0;
+	uint8_t array_addr_size = 0;
+	bool foundDevice = false;
+
+    /* Board pin, clock, debug console init */
+    BOARD_InitPins();
+    BOARD_BootClockRUN();
+    BOARD_I2C_ReleaseBus();
+    BOARD_I2C_ConfigurePins();
+    BOARD_InitDebugConsole();
+
+    i2cSourceClock = CLOCK_GetFreq(ACCEL_I2C_CLK_SRC);
+    fxosHandle.base = BOARD_ACCEL_I2C_BASEADDR;
+    fxosHandle.i2cHandle = &g_MasterHandle;
+
+    I2C_MasterGetDefaultConfig(&i2cConfig);
+    I2C_MasterInit(BOARD_ACCEL_I2C_BASEADDR, &i2cConfig, i2cSourceClock);
+    I2C_MasterTransferCreateHandle(BOARD_ACCEL_I2C_BASEADDR, &g_MasterHandle, NULL, NULL);
+
+	 /* Find sensor devices */
+	array_addr_size = sizeof(g_accel_address) / sizeof(g_accel_address[0]);
+	for (i = 0; i < array_addr_size; i++)
+	{
+		fxosHandle.xfer.slaveAddress = g_accel_address[i];
+		if (FXOS_ReadReg(&fxosHandle, WHO_AM_I_REG, &regResult, 1) == kStatus_Success)
+		{
+			foundDevice = true;
+			break;
+		}
+		if ((i == (array_addr_size - 1)) && (!foundDevice))
+		{
+			shell_write("\r\nDo not found sensor device\r\n");
+			while (1)
+			{
+			};
+		}
+	}
+	/**Initialice accelerometer sensor*/
+	  /* Init accelerometer sensor */
+		  if (FXOS_Init(&fxosHandle) != kStatus_Success)
+		  {
+			  shell_write("\r\nFail init accelerometer\r\n");
+		  }
+}
 /*==================================================================================================
 Public functions
 ==================================================================================================*/
@@ -201,6 +338,10 @@ void APP_Init
 
     /* Use one instance ID for application */
     mThrInstanceId = gThrDefaultInstanceId_c;
+
+    /**Inicializar acelerometro*/
+    initialize_accel();
+
 
 #if THR_ENABLE_EVENT_MONITORING
     /* Initialize event monitoring */
@@ -1494,23 +1635,31 @@ static void APP_CoapAccelCb(coapSessionStatus_t sessionStatus, uint8_t *pData, c
 	  pMySession = COAP_OpenSession(mAppCoapInstId);
 	  COAP_AddOptionToList(pMySession,COAP_URI_PATH_OPTION, APP_ACCEL_URI_PATH,SizeOfString(APP_ACCEL_URI_PATH));
 
+
+	  /* Get new accelerometer data. */
+	  if (FXOS_ReadSensorData(&fxosHandle, &sensorData) != kStatus_Success)
+	  {
+		  shell_write("Error accediendo al acelerometro");
+	  }
+	/* Get the X and Y data from the sensor data structure in 14 bit left format data*/
+	  xData = (int16_t)((uint16_t)((uint16_t)sensorData.accelXMSB << 8) | (uint16_t)sensorData.accelXLSB) / 4U;
+	  yData = (int16_t)((uint16_t)((uint16_t)sensorData.accelYMSB << 8) | (uint16_t)sensorData.accelYLSB) / 4U;
+	  zData = (int16_t)((uint16_t)((uint16_t)sensorData.accelZMSB << 8) | (uint16_t)sensorData.accelZLSB) / 4U;
+/*
+	  pMySessionPayload[0] = xData;
+	  pMySessionPayload[1] = yData;
+	  pMySessionPayload[2] = zData;*/
 	    if (gCoapConfirmable_c == pSession->msgType)
 	  {
 	    if (gCoapGET_c == pSession->code)
 	    {
+	    	shell_write("\n\r x: ");
+	    	shell_writeSignedDec(xData);
+	    	shell_write("\n\r y: ");
+	    	shell_writeSignedDec(yData);
+	    	shell_write("\n\r z: ");
+	    	shell_writeSignedDec(zData);
 	      shell_write("'CON' packet received 'GET' with payload: ");
-	    }
-	    if (gCoapPOST_c == pSession->code)
-	    {
-	      shell_write("'CON' packet received 'POST' with payload: ");
-	    }
-	    if (gCoapPUT_c == pSession->code)
-	    {
-	      shell_write("'CON' packet received 'PUT' with payload: ");
-	    }
-	    if (gCoapFailure_c!=sessionStatus)
-	    {
-	      COAP_Send(pSession, gCoapMsgTypeAckSuccessChanged_c, pMySessionPayload, pMyPayloadSize);
 	    }
 	  }
 
@@ -1518,15 +1667,13 @@ static void APP_CoapAccelCb(coapSessionStatus_t sessionStatus, uint8_t *pData, c
 	  {
 	    if (gCoapGET_c == pSession->code)
 	    {
+			shell_write("\n\r x: ");
+			shell_writeSignedDec(xData);
+			shell_write("\n\r y: ");
+			shell_writeSignedDec(yData);
+			shell_write("\n\r z: ");
+			shell_writeSignedDec(zData);
 	      shell_write("'NON' packet received 'GET' with payload: ");
-	    }
-	    if (gCoapPOST_c == pSession->code)
-	    {
-	      shell_write("'NON' packet received 'POST' with payload: ");
-	    }
-	    if (gCoapPUT_c == pSession->code)
-	    {
-	      shell_write("'NON' packet received 'PUT' with payload: ");
 	    }
 	  }
 	  shell_writeN(pData, dataLen);
