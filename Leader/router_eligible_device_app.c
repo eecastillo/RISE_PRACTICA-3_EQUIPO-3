@@ -1629,8 +1629,8 @@ static void APP_AutoStartCb
 
 static void APP_CoapAccelCb(coapSessionStatus_t sessionStatus, uint8_t *pData, coapSession_t *pSession, uint32_t dataLen)
 {
-	 static uint8_t pMySessionPayload[3]={0x31,0x32,0x33};
-	  static uint32_t pMyPayloadSize=3;
+	 static uint8_t pMySessionPayload[6]={0,0,0,0,0,0};
+	  static uint32_t pMyPayloadSize=6;
 	  coapSession_t *pMySession = NULL;
 	  pMySession = COAP_OpenSession(mAppCoapInstId);
 	  COAP_AddOptionToList(pMySession,COAP_URI_PATH_OPTION, APP_ACCEL_URI_PATH,SizeOfString(APP_ACCEL_URI_PATH));
@@ -1645,10 +1645,13 @@ static void APP_CoapAccelCb(coapSessionStatus_t sessionStatus, uint8_t *pData, c
 	  xData = (int16_t)((uint16_t)((uint16_t)sensorData.accelXMSB << 8) | (uint16_t)sensorData.accelXLSB) / 4U;
 	  yData = (int16_t)((uint16_t)((uint16_t)sensorData.accelYMSB << 8) | (uint16_t)sensorData.accelYLSB) / 4U;
 	  zData = (int16_t)((uint16_t)((uint16_t)sensorData.accelZMSB << 8) | (uint16_t)sensorData.accelZLSB) / 4U;
-	  pMySessionPayload[0]=xData;
-	  pMySessionPayload[1]=yData;
-	  pMySessionPayload[2]=zData;
-	    if (gCoapConfirmable_c == pSession->msgType)
+	  pMySessionPayload[0]=(uint8_t)(xData >> 4);
+	  pMySessionPayload[1]=(uint8_t)(xData && 0x0F);
+	  pMySessionPayload[2]=(uint8_t)(yData >> 4);
+	  pMySessionPayload[3]=(uint8_t)(yData && 0x0F);
+	  pMySessionPayload[4]=(uint8_t)(zData >> 4);
+	  pMySessionPayload[5]=(uint8_t)(zData && 0x0F);
+	  if (gCoapConfirmable_c == pSession->msgType)
 	  {
 	    if (gCoapGET_c == pSession->code)
 	    {
