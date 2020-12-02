@@ -1645,10 +1645,9 @@ static void APP_CoapAccelCb(coapSessionStatus_t sessionStatus, uint8_t *pData, c
 	  xData = (int16_t)((uint16_t)((uint16_t)sensorData.accelXMSB << 8) | (uint16_t)sensorData.accelXLSB) / 4U;
 	  yData = (int16_t)((uint16_t)((uint16_t)sensorData.accelYMSB << 8) | (uint16_t)sensorData.accelYLSB) / 4U;
 	  zData = (int16_t)((uint16_t)((uint16_t)sensorData.accelZMSB << 8) | (uint16_t)sensorData.accelZLSB) / 4U;
-/*
-	  pMySessionPayload[0] = xData;
-	  pMySessionPayload[1] = yData;
-	  pMySessionPayload[2] = zData;*/
+	  pMySessionPayload[0]=xData;
+	  pMySessionPayload[1]=yData;
+	  pMySessionPayload[2]=zData;
 	    if (gCoapConfirmable_c == pSession->msgType)
 	  {
 	    if (gCoapGET_c == pSession->code)
@@ -1661,19 +1660,39 @@ static void APP_CoapAccelCb(coapSessionStatus_t sessionStatus, uint8_t *pData, c
 	    	shell_writeSignedDec(zData);
 	      shell_write("'CON' packet received 'GET' with payload: ");
 	    }
+	    if (gCoapPOST_c == pSession->code)
+	    {
+	      shell_write("'CON' packet received 'POST' with payload: ");
+	    }
+	    if (gCoapPUT_c == pSession->code)
+	    {
+	      shell_write("'CON' packet received 'PUT' with payload: ");
+	    }
+	    if (gCoapFailure_c!=sessionStatus)
+	    {
+	      COAP_Send(pSession, gCoapMsgTypeAckSuccessChanged_c, pMySessionPayload, pMyPayloadSize);
+	    }
 	  }
 
 	  else if(gCoapNonConfirmable_c == pSession->msgType)
 	  {
 	    if (gCoapGET_c == pSession->code)
 	    {
-			shell_write("\n\r x: ");
+	    	shell_write("\n\r x: ");
 			shell_writeSignedDec(xData);
 			shell_write("\n\r y: ");
 			shell_writeSignedDec(yData);
 			shell_write("\n\r z: ");
 			shell_writeSignedDec(zData);
 	      shell_write("'NON' packet received 'GET' with payload: ");
+	    }
+	    if (gCoapPOST_c == pSession->code)
+	    {
+	      shell_write("'NON' packet received 'POST' with payload: ");
+	    }
+	    if (gCoapPUT_c == pSession->code)
+	    {
+	      shell_write("'NON' packet received 'PUT' with payload: ");
 	    }
 	  }
 	  shell_writeN(pData, dataLen);
