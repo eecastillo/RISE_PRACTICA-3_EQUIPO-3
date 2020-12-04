@@ -77,7 +77,7 @@ Private macros
 #define gAppJoinTimeout_c                       800    /* miliseconds */
 
 #define APP_LED_URI_PATH                        "/led"
-#define APP_TEMP_URI_PATH                       "/temp"
+#define APP_TEMP_URI_PATH                       "/accel"
 #define APP_SINK_URI_PATH                       "/sink"
 #if LARGE_NETWORK
 #define APP_RESET_TO_FACTORY_URI_PATH           "/reset"
@@ -1279,8 +1279,18 @@ static void APP_CoapTempCb
     uint32_t dataLen
 )
 {
+	uint8_t accel_data[6];
+	FLib_MemCpy(accel_data,pData,dataLen);
     uint8_t *pTempString = NULL;
     uint32_t ackPloadSize = 0, maxDisplayedString = 10;
+    uint8_t X[8];
+    uint8_t Y[8];
+    uint8_t Z[8];
+    X[0]='+';
+	Y[0]='+';
+	Z[0]='+';
+    int j=1;
+    uint8_t temporal=0;
 
     /* Send CoAP ACK */
     if(gCoapGET_c == pSession->code)
@@ -1296,17 +1306,87 @@ static void APP_CoapTempCb
         {
             char addrStr[INET6_ADDRSTRLEN];
             uint8_t temp[10];
-
+            uint16_t a2_temp;
+          //  uint8_t* msg="hola mundo";
             ntop(AF_INET6, (ipAddr_t*)&pSession->remoteAddrStorage.ss_addr, addrStr, INET6_ADDRSTRLEN);
             shell_write("\r");
 
             if(0 != dataLen)
             {
+            	//x negativo
+            	if((accel_data[0] & 0x80) == 0x80)
+            	{
+            		a2_temp = (accel_data[0]<<8) | (accel_data[1]);
+            		a2_temp = (~a2_temp)+1;
+            		accel_data[0] = a2_temp>>8;
+            		accel_data[1] = a2_temp & 0xFF;
+            		X[0]='-';
+            	}
+            	//y negativo
+            	if((accel_data[2] & 0x80) == 0x80)
+				{
+
+            		a2_temp = (accel_data[2]<<8) | (accel_data[3]);
+            		a2_temp = (~a2_temp)+1;
+            		accel_data[2] = a2_temp>>8;
+            		accel_data[3] = a2_temp & 0xFF;
+            		Y[0]='-';
+				}
+            	//z negativo
+            	if((accel_data[4] & 0x80) == 0x80)
+				{
+
+            		a2_temp = (accel_data[4]<<8) | (accel_data[5]);
+            		a2_temp = (~a2_temp)+1;
+            		accel_data[4] = a2_temp>>8;
+            		accel_data[5] = a2_temp & 0xFF;
+            		Z[0]='-';
+				}
+            	int i=0;
+            	for(;i<2;i++)
+				{
+            		temporal = accel_data[i] ;
+					X[j++] = (temporal/100)+48;
+					temporal = temporal%100;
+					X[j++] = (temporal/10)+48;
+					X[j++] = (temporal%10)+48;
+				}
+            	j=1;
+            	for(;i<4;i++)
+				{
+            		temporal = accel_data[i] ;
+					Y[j++] = (temporal/100)+48;
+					temporal = temporal%100;
+					Y[j++] = (temporal/10)+48;
+					Y[j++] = (temporal%10)+48;
+				}
+            	j=1;
+            	for(;i<6;i++)
+				{
+            		temporal = accel_data[i] ;
+					Z[j++] = (temporal/100)+48;
+					temporal = temporal%100;
+					Z[j++] = (temporal/10)+48;
+					Z[j++] = (temporal%10)+48;
+
+				}
+            	X[7]='\0';
+            	Y[7]='\0';
+            	Z[7]='\0';
+            	shell_printf("\n\r X = ");
+            	shell_printf((char*)X);
+            	shell_printf(" Y = ");
+            	shell_printf((char*)Y);
+            	shell_printf(" Z = ");
+            	shell_printf((char*)Z);
+            	shell_printf("\n\r");
                 /* Prevent from buffer overload */
                 (dataLen >= maxDisplayedString) ? (dataLen = (maxDisplayedString - 1)) : (dataLen);
                 temp[dataLen]='\0';
+
                 FLib_MemCpy(temp,pData,dataLen);
-                shell_printf((char*)temp);
+                //shell_printf((char*)pData);
+                //shell_printf("hi");
             }
             shell_printf("\tFrom IPv6 Address: %s\n\r", addrStr);
             shell_refresh();
