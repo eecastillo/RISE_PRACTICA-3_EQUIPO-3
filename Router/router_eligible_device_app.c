@@ -77,7 +77,7 @@ Private macros
 #define gAppJoinTimeout_c                       800    /* miliseconds */
 
 #define APP_LED_URI_PATH                        "/led"
-#define APP_TEMP_URI_PATH                       "/accel"
+#define APP_ACCEL_URI_PATH                       "/accel"
 #define APP_SINK_URI_PATH                       "/sink"
 #if LARGE_NETWORK
 #define APP_RESET_TO_FACTORY_URI_PATH           "/reset"
@@ -118,7 +118,7 @@ static void APP_LocalDataSinkRelease(uint8_t *pParam);
 static void APP_ProcessLedCmd(uint8_t *pCommand, uint8_t dataLen);
 static void APP_CoapGenericCallback(coapSessionStatus_t sessionStatus, uint8_t *pData, coapSession_t *pSession, uint32_t dataLen);
 static void APP_CoapLedCb(coapSessionStatus_t sessionStatus, uint8_t *pData, coapSession_t *pSession, uint32_t dataLen);
-static void APP_CoapTempCb(coapSessionStatus_t sessionStatus, uint8_t *pData, coapSession_t *pSession, uint32_t dataLen);
+static void APP_CoapAccelCb(coapSessionStatus_t sessionStatus, uint8_t *pData, coapSession_t *pSession, uint32_t dataLen);
 static void APP_CoapSinkCb(coapSessionStatus_t sessionStatus, uint8_t *pData, coapSession_t *pSession, uint32_t dataLen);
 static void App_RestoreLeaderLed(uint8_t *param);
 #if LARGE_NETWORK
@@ -134,7 +134,7 @@ static void APP_AutoStartCb(void *param);
 Public global variables declarations
 ==================================================================================================*/
 const coapUriPath_t gAPP_LED_URI_PATH  = {SizeOfString(APP_LED_URI_PATH), (uint8_t *)APP_LED_URI_PATH};
-const coapUriPath_t gAPP_TEMP_URI_PATH = {SizeOfString(APP_TEMP_URI_PATH), (uint8_t *)APP_TEMP_URI_PATH};
+const coapUriPath_t gAPP_ACCEL_URI_PATH = {SizeOfString(APP_ACCEL_URI_PATH), (uint8_t *)APP_ACCEL_URI_PATH};
 const coapUriPath_t gAPP_SINK_URI_PATH = {SizeOfString(APP_SINK_URI_PATH), (uint8_t *)APP_SINK_URI_PATH};
 #if LARGE_NETWORK
 const coapUriPath_t gAPP_RESET_URI_PATH = {SizeOfString(APP_RESET_TO_FACTORY_URI_PATH), (uint8_t *)APP_RESET_TO_FACTORY_URI_PATH};
@@ -486,7 +486,7 @@ static void APP_InitCoapDemo
 )
 {
     coapRegCbParams_t cbParams[] =  {{APP_CoapLedCb,  (coapUriPath_t *)&gAPP_LED_URI_PATH},
-                                     {APP_CoapTempCb, (coapUriPath_t *)&gAPP_TEMP_URI_PATH},
+                                     {APP_CoapAccelCb, (coapUriPath_t *)&gAPP_ACCEL_URI_PATH},
 #if LARGE_NETWORK
                                      {APP_CoapResetToFactoryDefaultsCb, (coapUriPath_t *)&gAPP_RESET_URI_PATH},
 #endif
@@ -837,7 +837,7 @@ static void APP_CoapGenericCallback
     /* If no ACK was received, try again */
     if(sessionStatus == gCoapFailure_c)
     {
-        if(FLib_MemCmp(pSession->pUriPath->pUriPath, (coapUriPath_t *)&gAPP_TEMP_URI_PATH.pUriPath,
+        if(FLib_MemCmp(pSession->pUriPath->pUriPath, (coapUriPath_t *)&gAPP_ACCEL_URI_PATH.pUriPath,
                        pSession->pUriPath->length))
         {
             (void)NWKU_SendMsg(APP_ReportTemp, NULL, mpAppThreadMsgQueue);
@@ -885,7 +885,7 @@ static void APP_ReportTemp
             pSession->pCallback = NULL;
             FLib_MemCpy(&pSession->remoteAddrStorage.ss_addr, &gCoapDestAddress, sizeof(ipAddr_t));
             ackPloadSize = strlen((char *)pTempString);
-            pSession->pUriPath = (coapUriPath_t *)&gAPP_TEMP_URI_PATH;
+            pSession->pUriPath = (coapUriPath_t *)&gAPP_ACCEL_URI_PATH;
 
             if(!IP6_IsMulticastAddr(&gCoapDestAddress))
             {
@@ -1261,7 +1261,7 @@ static void APP_ProcessLedCmd
 
 /*!*************************************************************************************************
 \private
-\fn     static void APP_CoapTempCb(coapSessionStatus_t sessionStatus, uint8_t *pData,
+\fn     static void APP_CoapAccelCb(coapSessionStatus_t sessionStatus, uint8_t *pData,
                                    coapSession_t *pSession, uint32_t dataLen)
 \brief  This function is the callback function for CoAP temperature message.
 \brief  It sends the temperature value in a CoAP ACK message.
@@ -1271,7 +1271,7 @@ static void APP_ProcessLedCmd
 \param  [in]    pSession        Pointer to CoAP session
 \param  [in]    dataLen         Length of CoAP payload
 ***************************************************************************************************/
-static void APP_CoapTempCb
+static void APP_CoapAccelCb
 (
     coapSessionStatus_t sessionStatus,
     uint8_t *pData,
